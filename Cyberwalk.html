@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Roll 3D - Pro Multi-Path & Slopes</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        body {
+            overflow: hidden;
+            background: #030712;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+        #game-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* HUD / UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0, 240, 255, 0.35);
+            padding: 12px 22px;
+            border-radius: 16px;
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.2);
+        }
+        .stat-box {
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #38bdf8;
+        }
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 0 0 12px rgba(56, 189, 248, 0.8);
+        }
+        #speed-bar-container {
+            width: 100px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        #speed-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #00f0ff, #ff007f);
+            transition: width 0.1s;
+        }
+        /* Modals */
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(8, 12, 24, 0.94);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 240, 255, 0.5);
+            padding: 30px;
+            border-radius: 24px;
+            text-align: center;
+            width: 88%;
+            max-width: 400px;
+            pointer-events: auto;
+            box-shadow: 0 0 50px rgba(0, 240, 255, 0.3);
+        }
+        .modal h1 {
+            font-size: 26px;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00f0ff, #a855f7, #ff007f);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .modal p {
+            font-size: 14px;
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin-bottom: 18px;
+        }
+        .controls-hint {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            color: #94a3b8;
+            text-align: left;
+            line-height: 1.7;
+        }
+        .controls-hint span {
+            color: #00f0ff;
+            font-weight: bold;
+        }
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        button {
+            background: linear-gradient(135deg, #00f0ff, #3b82f6);
+            color: #030712;
+            border: none;
+            padding: 14px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0, 240, 255, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:active {
+            transform: scale(0.96);
+        }
+        #reset-btn {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            padding: 8px 20px;
+            font-size: 12px;
+            box-shadow: none;
+        }
+        #reset-btn:hover {
+            color: #fff;
+            border-color: #ff007f;
+        }
+        .hidden {
+            display: none !important;
+        }
+        #toast {
+            position: absolute;
+            top: 95px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 240, 255, 0.25);
+            border: 1px solid #00f0ff;
+            padding: 8px 22px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s;
+            box-shadow: 0 0 15px rgba(0,240,255,0.4);
+        }
+    </style>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="top-bar">
+            <div class="stat-box">
+                <div class="stat-label">LEVEL</div>
+                <div class="stat-value" id="level-display">1</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">SPEED</div>
+                <div id="speed-bar-container"><div id="speed-bar"></div></div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">SCORE</div>
+                <div class="stat-value" id="score-display">0</div>
+            </div>
+        </div>
+        <div id="toast">Level Cleared!</div>
+    </div>
+
+    <!-- Start / Game Over Modal -->
+    <div id="menu-modal" class="modal">
+        <h1 id="modal-title">CYBER ROLL 3D</h1>
+        <p id="modal-desc">Navigate slopes, split paths, massive hammers, and use purple bumper blocks to brake safely!</p>
+        <div class="controls-hint">
+            👆 <span>Swipe Up / W:</span> Accelerate Forward<br>
+            👇 <span>Swipe Down / S:</span> Brake & Reverse<br>
+            👈👉 <span>Swipe Left/Right / A/D:</span> Steer Ball<br>
+            🛡️ <span>Purple Blocks:</span> Safe Speed Bumpers (No Game Over)
+        </div>
+        <div class="btn-group">
+            <button id="start-btn">Play Level 1</button>
+            <button id="reset-btn">Reset Progress to Level 1</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. SCENE, CAMERA & RENDERER ---
+        const canvas = document.getElementById('game-canvas');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x030712);
+        scene.fog = new THREE.FogExp2(0x030712, 0.011);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 220);
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // --- 2. LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0x00f0ff, 1.2);
+        dirLight.position.set(15, 30, 15);
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0xff007f, 2, 35);
+        scene.add(pointLight);
+
+        // --- 3. BACKGROUND STARFIELD ---
+        const starGeo = new THREE.BufferGeometry();
+        const starCount = 1200;
+        const starPos = new Float32Array(starCount * 3);
+        for (let i = 0; i < starCount * 3; i++) {
+            starPos[i] = (Math.random() - 0.5) * 350;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        const starMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.5, transparent: true, opacity: 0.8 });
+        const starField = new THREE.Points(starGeo, starMat);
+        scene.add(starField);
+
+        // --- 4. PLAYER BALL ---
+        const ballRadius = 0.6;
+        const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+        
+        const texCanvas = document.createElement('canvas');
+        texCanvas.width = 128; texCanvas.height = 128;
+        const ctx = texCanvas.getContext('2d');
+        ctx.fillStyle = '#00f0ff';
+        ctx.fillRect(0, 0, 128, 128);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 45, 128, 38);
+        ctx.fillStyle = '#ff007f';
+        ctx.fillRect(45, 0, 38, 128);
+        const ballTex = new THREE.CanvasTexture(texCanvas);
+
+        const ballMat = new THREE.MeshStandardMaterial({
+            map: ballTex,
+            roughness: 0.2,
+            metalness: 0.6
+        });
+        const ball = new THREE.Mesh(ballGeo, ballMat);
+        scene.add(ball);
+
+        // --- 5. PERSISTENT SAVE SYSTEM ---
+        let savedLevel = parseInt(localStorage.getItem('cyberRoll_level')) || 1;
+        let savedScore = parseInt(localStorage.getItem('cyberRoll_score')) || 0;
+
+        let isPlaying = false;
+        let currentLevel = savedLevel;
+        let score = savedScore;
+        let levelStartScore = savedScore;
+
+        let ballPos = { x: 0, y: ballRadius, z: 0 };
+        let velocity = { x: 0, y: 0, z: 0 };
+        const maxSpeed = 0.65;
+        const minReverseSpeed = -0.28;
+        const gravity = -0.025;
+
+        let platforms = [];
+        let drills = [];
+        let smashHammers = [];
+        let safetyBumpers = [];
+        let gems = [];
+        let finishLine = null;
+
+        // UI References
+        const menuModal = document.getElementById('menu-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalDesc = document.getElementById('modal-desc');
+        const startBtn = document.getElementById('start-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const levelDisplay = document.getElementById('level-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const speedBar = document.getElementById('speed-bar');
+        const toast = document.getElementById('toast');
+
+        levelDisplay.innerText = currentLevel;
+        scoreDisplay.innerText = score;
+        startBtn.innerText = `Play Level ${currentLevel}`;
+
+        function saveProgress() {
+            localStorage.setItem('cyberRoll_level', currentLevel);
+            localStorage.setItem('cyberRoll_score', score);
+        }
+
+        // --- 6. HELPER TO CREATE TRACK SEGMENT (SUPPORTS SLOPES & ELEVATION) ---
+        const platMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.75 });
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x00f0ff });
+        const bumperMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, emissive: 0x6b21a8, roughness: 0.2, metalness: 0.5 });
+        const drillMat = new THREE.MeshStandardMaterial({ color: 0xff0055, emissive: 0x880022, metalness: 0.8, roughness: 0.2 });
+        const steelMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.2 });
+        const hammerHeadMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x92400e, metalness: 0.7, roughness: 0.3 });
+        const gemMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xca8a04 });
+
+        function createTrackSegment(x, yStart, yEnd, zStart, length, width) {
+            const dy = yEnd - yStart;
+            const slopeAngle = Math.atan2(dy, length); // Pitch rotation around X axis
+            const actualLength = Math.hypot(length, dy) + 0.35; // Slight overlap to prevent seams
+            const midY = (yStart + yEnd) / 2;
+            const midZ = zStart - length / 2;
+
+            const geo = new THREE.BoxGeometry(width, 0.6, actualLength);
+            const mesh = new THREE.Mesh(geo, platMat);
+            mesh.position.set(x, midY - 0.3, midZ);
+            mesh.rotation.x = slopeAngle;
+
+            const edges = new THREE.EdgesGeometry(geo);
+            const line = new THREE.LineSegments(edges, edgeMat);
+            mesh.add(line);
+
+            scene.add(mesh);
+
+            platforms.push({
+                mesh: mesh,
+                x: x,
+                zStart: zStart,
+                zEnd: zStart - length,
+                yStart: yStart,
+                yEnd: yEnd,
+                width: width,
+                length: length,
+                slopeAngle: slopeAngle
+            });
+        }
+
+        function addSafetyBumper(x, y, z, width, depth = 0.9) {
+            const geo = new THREE.BoxGeometry(width, 0.95, depth);
+            const mesh = new THREE.Mesh(geo, bumperMat);
+            mesh.position.set(x, y + 0.475, z);
+
+            const edges = new THREE.EdgesGeometry(geo);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xe879f9 }));
+            mesh.add(line);
+
+            scene.add(mesh);
+            safetyBumpers.push({
+                mesh: mesh,
+                x: x,
+                y: y,
+                z: z,
+                width: width,
+                depth: depth
+            });
+        }
+
+        function addGiantSmashHammer(x, y, z, trackWidth, level) {
+            const hammerGroup = new THREE.Group();
+
+            // Massive Overhead Gantry
+            const beamGeo = new THREE.BoxGeometry(trackWidth + 2.5, 0.4, 0.4);
+            const beam = new THREE.Mesh(beamGeo, steelMat);
+            beam.position.y = 5.2;
+            hammerGroup.add(beam);
+
+            const pistonGroup = new THREE.Group();
+            const rodGeo = new THREE.CylinderGeometry(0.18, 0.18, 4.4);
+            const rod = new THREE.Mesh(rodGeo, steelMat);
+            rod.position.y = 2.8;
+
+            const headWidth = trackWidth * 0.72;
+            const headGeo = new THREE.BoxGeometry(headWidth, 1.3, 1.4);
+            const head = new THREE.Mesh(headGeo, hammerHeadMat);
+            head.position.y = 0.65;
+
+            pistonGroup.add(rod);
+            pistonGroup.add(head);
+            hammerGroup.add(pistonGroup);
+
+            hammerGroup.position.set(x, y, z);
+            scene.add(hammerGroup);
+
+            smashHammers.push({
+                group: hammerGroup,
+                piston: pistonGroup,
+                baseX: x,
+                baseY: y,
+                headWidth: headWidth,
+                phase: Math.random() * Math.PI * 2,
+                cycleSpeed: 0.028 + level * 0.004 // Generous rhythmic timing window
+            });
+        }
+
+        function addOffTrackDrill(x, y, z, trackWidth, level) {
+            const drillGroup = new THREE.Group();
+
+            const bodyGeo = new THREE.CylinderGeometry(0.55, 0.55, 1.3, 16);
+            bodyGeo.rotateZ(Math.PI / 2);
+            const body = new THREE.Mesh(bodyGeo, steelMat);
+
+            const coneGeo = new THREE.ConeGeometry(0.55, 1.5, 16);
+            coneGeo.rotateZ(-Math.PI / 2);
+            const cone = new THREE.Mesh(coneGeo, drillMat);
+            cone.position.x = 1.2;
+
+            drillGroup.add(body);
+            drillGroup.add(cone);
+            drillGroup.position.set(x, y + 0.65, z);
+            scene.add(drillGroup);
+
+            drills.push({
+                group: drillGroup,
+                cone: cone,
+                baseX: x,
+                baseY: y,
+                rangeX: (trackWidth / 2) + 1.8, // Moves completely outside the track before returning
+                speed: (0.025 + level * 0.005) * (Math.random() > 0.5 ? 1 : -1)
+            });
+        }
+
+        function addGem(x, y, z) {
+            const gemGeo = new THREE.OctahedronGeometry(0.42);
+            const gemMesh = new THREE.Mesh(gemGeo, gemMat);
+            gemMesh.position.set(x, y + 0.75, z);
+            scene.add(gemMesh);
+            gems.push({ mesh: gemMesh, collected: false });
+        }
+
+        // --- 7. LEVEL BUILDER (SLOPES, TURNS & 2/3-WAY SPLITS) ---
+        function clearLevel() {
+            platforms.forEach(p => scene.remove(p.mesh));
+            drills.forEach(d => scene.remove(d.group));
+            smashHammers.forEach(h => scene.remove(h.group));
+            safetyBumpers.forEach(b => scene.remove(b.mesh));
+            gems.forEach(g => scene.remove(g.mesh));
+            if (finishLine) scene.remove(finishLine);
+
+            platforms = [];
+            drills = [];
+            smashHammers = [];
+            safetyBumpers = [];
+            gems = [];
+        }
+
+        function buildLevel(level) {
+            clearLevel();
+
+            ballPos = { x: 0, y: ballRadius, z: 0 };
+            velocity = { x: 0, y: 0, z: 0 };
+            ball.position.set(ballPos.x, ballPos.y, ballPos.z);
+            ball.rotation.set(0, 0, 0);
+
+            let currentZ = 2;
+            let currentX = 0;
+            let currentY = 0;
+
+            // Start Straight Safe Runway
+            createTrackSegment(currentX, currentY, currentY, currentZ, 12, 5.2);
+            currentZ -= 12;
+
+            const totalSections = 8 + level * 2;
+
+            for (let s = 0; s < totalSections; s++) {
+                const sectionType = Math.random();
+                const segLength = 9;
+                const mainWidth = Math.max(3.6, 5.0 - level * 0.08);
+
+                // SECTION TYPE A: Uphill or Downhill Slope
+                if (sectionType < 0.32) {
+                    const climb = (Math.random() > 0.45 ? 1 : -1) * (1.8 + Math.random() * 1.4);
+                    const nextY = Math.max(-6, Math.min(10, currentY + climb));
+
+                    createTrackSegment(currentX, currentY, nextY, currentZ, segLength, mainWidth);
+                    
+                    // Place gems along slope
+                    addGem(currentX, (currentY + nextY) / 2, currentZ - segLength / 2);
+
+                    // Add a safety bumper at the bottom of a downhill slope to help catch speed!
+                    if (nextY < currentY) {
+                        const bumperX = currentX + (Math.random() > 0.5 ? 1.1 : -1.1);
+                        addSafetyBumper(bumperX, nextY, currentZ - segLength + 1.2, 1.3);
+                    }
+
+                    currentY = nextY;
+                    currentZ -= segLength;
+                }
+                // SECTION TYPE B: 2-Way or 3-Way Split Paths that merge back!
+                else if (sectionType < 0.65 && s < totalSections - 1) {
+                    const numPaths = (level >= 2 && Math.random() > 0.45) ? 3 : 2;
+                    const splitLength = 16;
+                    const laneWidth = 2.4;
+                    const spacing = numPaths === 2 ? 3.8 : 3.6;
+
+                    // Entry Hub Platform
+                    createTrackSegment(currentX, currentY, currentY, currentZ, 4, mainWidth + 2.5);
+                    currentZ -= 4;
+
+                    // Parallel Split Lanes
+                    for (let p = 0; p < numPaths; p++) {
+                        const offset = (p - (numPaths - 1) / 2) * spacing;
+                        const laneX = currentX + offset;
+
+                        createTrackSegment(laneX, currentY, currentY, currentZ, splitLength, laneWidth);
+
+                        // Put different challenges or rewards on each branch
+                        if (p === 0) {
+                            addGiantSmashHammer(laneX, currentY, currentZ - splitLength * 0.45, laneWidth, level);
+                            addSafetyBumper(laneX, currentY, currentZ - splitLength * 0.78, 1.2); // Safe brake after hammer!
+                        } else if (p === 1) {
+                            addOffTrackDrill(laneX, currentY, currentZ - splitLength * 0.5, laneWidth, level);
+                            addGem(laneX, currentY, currentZ - splitLength * 0.25);
+                        } else {
+                            addGem(laneX, currentY, currentZ - splitLength * 0.4);
+                            addGem(laneX, currentY, currentZ - splitLength * 0.7);
+                        }
+                    }
+
+                    currentZ -= splitLength;
+
+                    // Merge Hub Platform
+                    createTrackSegment(currentX, currentY, currentY, currentZ, 4, mainWidth + 2.5);
+                    currentZ -= 4;
+                }
+                // SECTION TYPE C: Winding Left/Right Curve with Hammers, Drills & Safety Bumpers
+                else {
+                    const curveShift = (Math.random() > 0.5 ? 1 : -1) * (1.8 + Math.random() * 1.5);
+                    const nextX = Math.max(-7, Math.min(7, currentX + curveShift));
+
+                    // Transition turn segment
+                    createTrackSegment((currentX + nextX) / 2, currentY, currentY, currentZ, segLength, mainWidth);
+                    currentX = nextX;
+
+                    const midZ = currentZ - segLength / 2;
+
+                    if (Math.random() < 0.5) {
+                        addGiantSmashHammer(currentX, currentY, midZ, mainWidth, level);
+                        // Place a safety bumper right after the hammer so player can slow down by hitting it
+                        const safeSide = (Math.random() > 0.5 ? 1 : -1) * (mainWidth * 0.25);
+                        addSafetyBumper(currentX + safeSide, currentY, currentZ - segLength + 1.0, 1.4);
+                    } else {
+                        addOffTrackDrill(currentX, currentY, midZ, mainWidth, level);
+                        addGem(currentX, currentY, currentZ - 2);
+                    }
+
+                    currentZ -= segLength;
+                }
+            }
+
+            // Final Finish Runway
+            createTrackSegment(currentX, currentY, currentY, currentZ, 10, 5.5);
+
+            // Finish Portal
+            const finishGeo = new THREE.TorusGeometry(2.3, 0.22, 16, 50);
+            const finishMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+            finishLine = new THREE.Mesh(finishGeo, finishMat);
+            finishLine.position.set(currentX, currentY + 1.8, currentZ - 8);
+            scene.add(finishLine);
+        }
+
+        // --- 8. TOUCH & KEYBOARD CONTROLS ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        window.addEventListener('touchstart', (e) => {
+            if (!isPlaying) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isPlaying) return;
+            e.preventDefault();
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+
+            const deltaX = touchX - touchStartX;
+            const deltaY = touchY - touchStartY;
+
+            velocity.x += deltaX * 0.0018;
+            velocity.x = Math.max(-0.28, Math.min(0.28, velocity.x));
+
+            if (deltaY < -4) {
+                velocity.z -= Math.abs(deltaY) * 0.002;
+            } else if (deltaY > 4) {
+                velocity.z += Math.abs(deltaY) * 0.0024;
+            }
+
+            velocity.z = Math.max(-maxSpeed, Math.min(-minReverseSpeed, velocity.z));
+
+            touchStartX = touchX;
+            touchStartY = touchY;
+        }, { passive: false });
+
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        function handleKeyboard() {
+            if (keys['ArrowUp'] || keys['KeyW']) {
+                velocity.z -= 0.02;
+            }
+            if (keys['ArrowDown'] || keys['KeyS']) {
+                velocity.z += 0.024;
+            }
+            if (keys['ArrowLeft'] || keys['KeyA']) {
+                velocity.x -= 0.016;
+            }
+            if (keys['ArrowRight'] || keys['KeyD']) {
+                velocity.x += 0.016;
+            }
+            velocity.z = Math.max(-maxSpeed, Math.min(-minReverseSpeed, velocity.z));
+            velocity.x = Math.max(-0.26, Math.min(0.26, velocity.x));
+        }
+
+        // --- 9. GAME LOOP & 3D SLOPE PHYSICS ---
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.opacity = 1;
+            setTimeout(() => toast.style.opacity = 0, 1800);
+        }
+
+        function gameOver(reason) {
+            isPlaying = false;
+            score = levelStartScore;
+            scoreDisplay.innerText = score;
+            modalTitle.innerText = `LEVEL ${currentLevel} FAILED`;
+            modalDesc.innerText = `${reason} | Progress saved at Level ${currentLevel}.`;
+            startBtn.innerText = `Retry Level ${currentLevel}`;
+            menuModal.classList.remove('hidden');
+        }
+
+        function nextLevel() {
+            currentLevel++;
+            score += 100;
+            levelStartScore = score;
+            saveProgress();
+
+            levelDisplay.innerText = currentLevel;
+            scoreDisplay.innerText = score;
+            showToast(`Level ${currentLevel} Unlocked!`);
+            buildLevel(currentLevel);
+        }
+
+        function updatePhysics() {
+            handleKeyboard();
+
+            // Natural friction
+            velocity.z *= 0.985;
+            velocity.x *= 0.88;
+
+            ballPos.x += velocity.x;
+            ballPos.z += velocity.z;
+
+            // Find platform under ball (supports split branches and slopes!)
+            let activePlatform = null;
+            let groundY = -999;
+
+            for (let p of platforms) {
+                const halfW = p.width / 2 + 0.25; // Slight edge forgiveness
+                if (
+                    ballPos.x >= p.x - halfW &&
+                    ballPos.x <= p.x + halfW &&
+                    ballPos.z <= p.zStart + 0.2 &&
+                    ballPos.z >= p.zEnd - 0.2
+                ) {
+                    // Calculate exact elevation Y along the slope
+                    const progress = Math.max(0, Math.min(1, (p.zStart - ballPos.z) / p.length));
+                    const surfaceY = p.yStart + (p.yEnd - p.yStart) * progress;
+
+                    // Ensure ball isn't far below the platform
+                    if (ballPos.y >= surfaceY + ballRadius - 0.8) {
+                        activePlatform = p;
+                        groundY = surfaceY;
+                        break;
+                    }
+                }
+            }
+
+            if (activePlatform) {
+                // Stick to slope surface smoothly
+                ballPos.y = groundY + ballRadius;
+                velocity.y = 0;
+
+                // Realistic slope gravity pull (slower uphill, faster downhill)
+                const slopeGrade = (activePlatform.yEnd - activePlatform.yStart) / activePlatform.length;
+                velocity.z += slopeGrade * 0.008;
+                velocity.z = Math.max(-maxSpeed, Math.min(-minReverseSpeed, velocity.z));
+            } else {
+                // No track underneath -> fall into the sky abyss!
+                velocity.y += gravity;
+                ballPos.y += velocity.y;
+            }
+
+            // Check if ball fell off open track edges
+            if (ballPos.y < groundY - 6 || ballPos.y < -14) {
+                gameOver("Ball fell off the open track!");
+                return;
+            }
+
+            // Update Ball Mesh & Rotation
+            ball.position.set(ballPos.x, ballPos.y, ballPos.z);
+            ball.rotation.x += velocity.z / ballRadius;
+            ball.rotation.z -= velocity.x / ballRadius;
+
+            // 1. Update & Check Safety Bumper Blocks (NO GAME OVER - Decelerates & Protects Ball!)
+            for (let b of safetyBumpers) {
+                const dx = ballPos.x - b.x;
+                const dz = ballPos.z - b.z;
+                const dy = Math.abs((ballPos.y - ballRadius) - b.y);
+
+                const halfW = b.width / 2 + ballRadius;
+                const halfD = b.depth / 2 + ballRadius;
+
+                if (Math.abs(dx) < halfW && Math.abs(dz) < halfD && dy < 1.0) {
+                    // Determine side of collision and softly absorb speed
+                    const overlapX = halfW - Math.abs(dx);
+                    const overlapZ = halfD - Math.abs(dz);
+
+                    if (overlapZ < overlapX) {
+                        // Hit front/back of safety bumper -> brake speed safely!
+                        ballPos.z += (dz > 0 ? overlapZ : -overlapZ);
+                        velocity.z *= -0.25; // Dampen forward momentum safely
+                    } else {
+                        // Hit side of safety bumper
+                        ballPos.x += (dx > 0 ? overlapX : -overlapX);
+                        velocity.x *= -0.35;
+                    }
+                    ball.position.set(ballPos.x, ballPos.y, ballPos.z);
+                }
+            }
+
+            // 2. Update & Check Off-Track Drilling Machines
+            for (let d of drills) {
+                d.cone.rotation.x += 0.25;
+                d.group.position.x += d.speed;
+                if (Math.abs(d.group.position.x - d.baseX) > d.rangeX) {
+                    d.speed *= -1;
+                    d.group.scale.x *= -1;
+                }
+
+                const dx = Math.abs(ballPos.x - d.group.position.x);
+                const dz = Math.abs(ballPos.z - d.group.position.z);
+                const dy = Math.abs((ballPos.y - ballRadius) - d.baseY);
+
+                if (dx < 1.1 && dz < 0.7 && dy < 1.0) {
+                    gameOver("Hit by a Drilling Machine!");
+                    return;
+                }
+            }
+
+            // 3. Update & Check Giant Timed Smash Hammers
+            for (let h of smashHammers) {
+                h.phase += h.cycleSpeed;
+                const wave = Math.sin(h.phase);
+                const heightOffset = Math.max(0, wave * 3.2); 
+                h.piston.position.y = heightOffset;
+
+                if (heightOffset < 0.8) {
+                    const dx = Math.abs(ballPos.x - h.baseX);
+                    const dz = Math.abs(ballPos.z - h.group.position.z);
+                    const dy = Math.abs((ballPos.y - ballRadius) - h.baseY);
+
+                    if (dx < (h.headWidth / 2 + ballRadius * 0.6) && dz < (0.65 + ballRadius * 0.6) && dy < 1.2) {
+                        gameOver("Crushed by a Giant Smash Hammer!");
+                        return;
+                    }
+                }
+            }
+
+            // 4. Collect Gems
+            for (let g of gems) {
+                if (!g.collected) {
+                    g.mesh.rotation.y += 0.05;
+                    const dist = ball.position.distanceTo(g.mesh.position);
+                    if (dist < 1.25) {
+                        g.collected = true;
+                        g.mesh.visible = false;
+                        score += 25;
+                        scoreDisplay.innerText = score;
+                    }
+                }
+            }
+
+            // 5. Check Finish Portal
+            if (finishLine) {
+                finishLine.rotation.z += 0.04;
+                if (
+                    Math.abs(ballPos.z - finishLine.position.z) < 1.2 &&
+                    Math.abs(ballPos.x - finishLine.position.x) < 2.8 &&
+                    Math.abs(ballPos.y - finishLine.position.y) < 2.5
+                ) {
+                    nextLevel();
+                    return;
+                }
+            }
+
+            // Speedometer update
+            const speedPercent = Math.min(100, Math.round((Math.abs(velocity.z) / maxSpeed) * 100));
+            speedBar.style.width = speedPercent + '%';
+
+            // Dynamic 3D Camera Follow (tracks elevation smoothly)
+            camera.position.x += (ballPos.x * 0.75 - camera.position.x) * 0.1;
+            camera.position.y += (ballPos.y + 4.6 - camera.position.y) * 0.1;
+            camera.position.z = ballPos.z + 8.0;
+            camera.lookAt(ballPos.x * 0.5, ballPos.y + 0.5, ballPos.z - 6);
+
+            pointLight.position.set(ballPos.x, ballPos.y + 3, ballPos.z - 2);
+            starField.position.z = ballPos.z;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isPlaying) {
+                updatePhysics();
+            } else {
+                starField.rotation.y += 0.0008;
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- 10. EVENT LISTENERS ---
+        startBtn.addEventListener('click', () => {
+            levelStartScore = score;
+            levelDisplay.innerText = currentLevel;
+            scoreDisplay.innerText = score;
+            buildLevel(currentLevel);
+            menuModal.classList.add('hidden');
+            isPlaying = true;
+        });
+
+        resetBtn.addEventListener('click', () => {
+            currentLevel = 1;
+            score = 0;
+            levelStartScore = 0;
+            saveProgress();
+            levelDisplay.innerText = currentLevel;
+            scoreDisplay.innerText = score;
+            modalTitle.innerText = "CYBER ROLL 3D";
+            modalDesc.innerText = "Progress reset. Ready to start from Level 1!";
+            startBtn.innerText = "Play Level 1";
+            buildLevel(1);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        buildLevel(currentLevel);
+        camera.position.set(0, 4.8, 8.0);
+        camera.lookAt(0, 0.5, -6);
+        animate();
+    </script>
+</body>
+</html>
